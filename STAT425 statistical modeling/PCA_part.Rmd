@@ -1,0 +1,143 @@
+---
+title: "project"
+author: "Yizhe He"
+date: "12/4/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readxl)
+library(corrplot)
+source("http://www.sthda.com/upload/rquery_cormat.r")
+library(pls)
+library(devtools)
+library(ggbiplot)
+```
+
+```{r}
+# read the data
+dat <- read_xlsx("Real_estate_valuation_data_set.xlsx")
+```
+
+```{r}
+# histogram of house price
+ggplot() +
+  geom_histogram(aes(x=dat$`Y house price of unit area`), fill = "skyblue", color = "black", bins = 35) +
+  labs(x="House price of unit area", y="Frequency", title = "Histogram of house price") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+# time series plot of house price
+ggplot() +
+  geom_line(aes(x=order(dat$`X1 transaction date`), y=dat$`Y house price of unit area`)) +
+  labs(x="Time", y="House Price") +
+  theme(axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) 
+```
+
+```{r}
+# scatterplot matrix 
+rquery.cormat(dat[,c(2,3,5,6)])
+pairs(dat[,c(2,3,5,6)])
+```
+
+```{r}
+# read the cs file
+dat2 <- read.csv("Real_estate_valuation_data_set_1.csv")
+dat2 <- dat2[,-c(1,3)]
+```
+
+
+```{r}
+# read the training and testing dat
+test_data <- read.csv("Real_estate_valuation_data_set_1_train.csv") 
+train_data <- read.csv("Real_estate_valuation_data_set_1_test.csv")
+```
+
+```{r}
+# fit PCA and make scree plot
+pca.fit <- prcomp(cor(train_data[,-c(1,2,3)]))
+summary(pca.fit)
+plot(pca.fit$sdev)
+lines(pca.fit$sdev)
+```
+```{r}
+# biplot for PC1 vs PC2
+biplot(pca.fit)
+```
+
+```{r}
+# standardized training data
+train <- train_data[,-c(1,3)]
+std <- function(x) {
+  (x-mean(x))/sd(x)
+}
+
+train$X1_transaction_year <- std(train$X1_transaction_year)
+train$X2_transaction_month <- std(train$X2_transaction_month)
+train$X3_house_age <- std(train$X3_house_age)
+train$X4_distance_to_the_nearest_MRT_station <- std(train$X4_distance_to_the_nearest_MRT_station)
+train$X5_number_of_convenience_stores <- std(train$X5_number_of_convenience_stores)
+train$X6_latitude <- std(train$X6_latitude)
+train$X7_longitude <- std(train$X7_longitude)
+```
+
+```{r}
+# fit PCR with training data
+pcr.fit <- pcr(Y_house_price_of_unit_area ~., data = train)
+pcr.fit$Xvar/pcr.fit$Xtotvar
+```
+
+```{r}
+# training RMSE
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 1))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 2))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 4))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 3))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 5))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 6))^2))
+sqrt(mean((train$Y_house_price_of_unit_area - predict(pcr.fit, train, ncomp = 7))^2))
+```
+
+```{r}
+# standardized testing data
+test <- test_data[,-c(1,3)]
+test$X1_transaction_year <- std(test$X1_transaction_year)
+test$X2_transaction_month <- std(test$X2_transaction_month)
+test$X3_house_age <- std(test$X3_house_age)
+test$X4_distance_to_the_nearest_MRT_station <- std(test$X4_distance_to_the_nearest_MRT_station)
+test$X5_number_of_convenience_stores <- std(test$X5_number_of_convenience_stores)
+test$X6_latitude <- std(test$X6_latitude)
+test$X7_longitude <- std(test$X7_longitude)
+```
+
+```{r}
+# testing RMSE
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 4))^2))
+```
+
+```{r}
+# testing RMSE
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 5))^2))
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 3))^2))
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 6))^2))
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 7))^2))
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 1))^2))
+sqrt(mean((test$Y_house_price_of_unit_area - predict(pcr.fit, test, ncomp = 2))^2))
+```
+
+```{r}
+# 10-fold CV
+set.seed(12345)
+pcr.cv <- pcr(Y_house_price_of_unit_area ~., data = dat2, validation="CV")
+PCRcv <- RMSEP(pcr.cv, estimate="CV")
+plot(PCRcv)
+```
+
+
+
+

@@ -1,0 +1,141 @@
+---
+title: "425 FINAL"
+author: "Chengyan Ji"
+date: "2021/11/18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("readxl")
+library("readxl")
+```
+
+## R Markdown
+
+# The file is corrupted so I downloaded the readxl package.
+
+```{r}
+df = read_excel("C:/Users/kurtji/Desktop/STAT425/FINAL/Real_estate_valuation_data_set.xlsx")
+colnames(df) <- c("Index", "X1_transaction_date", "X3_house_age", "X4_distance_to_the_nearest_MRT_station", "X5_number_of_convenience_stores", "X6_latitude", "X7_longitude", "Y_house_price_of_unit_area")
+```
+
+# Define the function to extract month and year from date
+```{r, echo=FALSE}
+transferData <- function(num) {
+  month = as.character(round((num %% 1) * 12))
+  #print(month)
+  if (month == '0') {
+    month = '12'
+    year = as.character(floor(num) - 1)
+  } else {
+    year = as.character(floor(num))
+  }
+  #print(year)
+  date = paste(year , '-', month, '-01', sep = (''))
+  #print(date)
+  #return('hi')
+  return(as.Date(date))
+}
+```
+
+# Modify data structure
+```{r}
+list <- do.call("c", lapply(df$X1_transaction_date, transferData))
+df1 = df
+df1$X1_transaction_date_1 <- list
+df1$X1_transaction_year <- format(as.Date(df1$X1_transaction_date_1, format="%d/%m/%Y"),"%Y")
+df1$X2_transaction_month <- format(as.Date(df1$X1_transaction_date_1, format="%d/%m/%Y"),"%m")
+
+#df1 <- df1[,-1]
+df1 <- df1[c("Y_house_price_of_unit_area", "X1_transaction_date", "X1_transaction_year", "X2_transaction_month", "X3_house_age", "X4_distance_to_the_nearest_MRT_station", "X5_number_of_convenience_stores", "X6_latitude", "X7_longitude")]
+```
+
+# Output the dataset
+```{r}
+write.csv(df1,"C:/Users/kurtji/Desktop/STAT425/FINAL/Real_estate_valuation_data_set_1.csv", row.names = TRUE)
+```
+
+# Split with 3-7 ratio
+```{r}
+train_index <- sample(1:nrow(df1), 138, replace = FALSE)
+train_data <- df1[train_index,]
+test_data <- df1[-train_index,]
+```
+
+# Output the dataset
+```{r}
+write.csv(train_data,"C:/Users/kurtji/Desktop/STAT425/FINAL/Real_estate_valuation_data_set_1_train.csv", row.names = TRUE)
+write.csv(test_data,"C:/Users/kurtji/Desktop/STAT425/FINAL/Real_estate_valuation_data_set_1_test.csv", row.names = TRUE)
+```
+
+## Exploratory Analysis
+```{r}
+summary(df1)
+```
+# Include some box plots
+```{r}
+library(ggplot2)
+```
+
+```{r}
+ggplot(df1, aes(x = X2_transaction_month, y = Y_house_price_of_unit_area)) +
+  geom_boxplot(fill = "#4271AE", colour = "#1F3552", alpha = 0.8) + 
+  scale_x_discrete(name = "Month of Purchase") +
+  scale_y_continuous(name = "House Price per Unit Area", breaks = seq(0, 125, 20)) + 
+  ggtitle("Boxplot of house price by month")
+```
+
+# House price against laltitude and altitude (scatter)
+
+```{r}
+ggplot(df1, aes(x = X4_distance_to_the_nearest_MRT_station, y = Y_house_price_of_unit_area)) +
+  geom_point(fill = "#4271AE", colour = "#1F3552", alpha = 0.8) + 
+  scale_x_discrete(name = "distance to nearest MRT station") +
+  scale_y_continuous(name = "House Price per Unit Area", breaks = seq(0, 125, 20)) + 
+  ggtitle("Scatterplot of house price over distance to nearest MRT station") +
+  geom_smooth(method = "lm", se = TRUE)
+```
+
+# Histograms
+
+```{r}
+hist(df1$X3_house_age, breaks = 50, col=rgb(1,0,0,0.5), xlab="house age", 
+     ylab="frequency", main="distribution of house age" )
+```
+
+# Model Diagnostic(To get clean data, but the project eventually used original data)
+
+```{r}
+#Finding high leverage points
+dim(df1)
+n = 414
+p = 6
+fit_1 <- lm(Y_house_price_of_unit_area ~ ., data = df1)
+lev = influence(fit_1)$hat
+lev[lev >= 2*p/n]
+which(lev >= 2*p/n)
+#drop the high leverage points
+df2 = df1[-which(lev >= 2*p/n),]
+```
+```{r}
+#Finding outliers
+jack = rstudent(fit_1)
+qt(.05/(2*n), 414)
+
+sort(abs(jack), decreasing = TRUE)[1:5]
+
+#there are two outliers
+#dropping outliers
+df3 = df2[-c(271,114),]
+```
+```{r}
+#Finding highly influential points
+cook = cooks.distance(fit_1)
+max(cook)
+#max is 0.1949, no greater than 1
+
+#this function is not working
+#halfnorm(cook, labs = row.names(df), ylab = "Cook's distance")
+```
+

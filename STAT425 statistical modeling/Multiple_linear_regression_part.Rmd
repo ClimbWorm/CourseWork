@@ -1,0 +1,185 @@
+---
+title: "final"
+author: "Rong Li"
+date: "11/28/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(faraway)
+training_set = read_delim("Real_estate_valuation_data_set_train.csv")
+training_set = training_set[-4]
+colnames(training_set) <- c("No","Price","Date","Month","House_age","Distance","Stores","Latitude","Longitude")
+training_set$Month <- as.factor(training_set$Month)
+head(training_set)
+attach(training_set)
+```
+
+
+```{r}
+plot(Price~Month,data=training_set)
+plot(Price~Latitude,data = training_set)
+```
+```{r}
+par(mfrow=c(3,1))
+plot(sort(Distance))
+plot(sort(log(Distance)))
+plot(log(Distance),Price)
+
+par(mfrow = c(2,1))
+plot(Distance,Price)
+plot(log(Distance),Price)
+```
+
+
+-Since variables like latitude and longitude will not change with time goes by,hence, we don't have to consider cross term including such variables.
+
+```{r}
+g1 = lm(Price~Date+Month+House_age+log(Distance)+Stores+Latitude+Longitude
++House_age:Month+log(Distance):Month+Stores:Month+Latitude:Month+Longitude:Month,data = training_set,na.action = na.omit)
+summary(g1)
+anova(g1)
+```
+
+```{r}
+
+g2 = lm(Price~Date+Month+House_age+log(Distance)+Stores+Latitude+Longitude
++Stores:Month,data = training_set,na.action = na.omit)
+summary(g2)
+
+g3 = lm(Price~Month+House_age+log(Distance)+Stores+Latitude+Longitude+Stores:Month,data = training_set,na.action = na.omit)
+summary(g3)
+
+boxcox(g3,plotit=T,lambda=seq(-1,1,by=0.1))
+
+#log(distance) and log(price)
+g4 = lm(log(Price)~Month+House_age+log(Distance)+Stores+Latitude+Longitude+Stores:Month,data = training_set,na.action = na.omit)
+summary(g4)#after adding Date, the coefficients of Month are not significant, hence, I delete Date.
+par(mfrow = c(2,1))
+plot(g4,which = 1)
+plot(g4,which = 2)
+```
+
+
+```{r}
+#detect influential points
+plot(g4,which = 4)
+```
+- There is no point with cook's distance greater than 1, so there is no influential points.
+
+```{r}
+#detect high leverage
+n=nrow(model.matrix(g4)); p=ncol(model.matrix(g4));
+lev=influence(g4)$hat
+lev[lev>2*p/n]
+halfnorm(lev, 6, labs=No, ylab="Leverages")
+training_set[lev > 2*p/n,]
+```
+-There are 6 high leverage point.And their No are 17,23,52,61,65,76.
+
+```{r}
+#detect outlier
+jack=rstudent(g4); 
+qt(.05/(2*n), n-p-1) # Bonferroni correction
+sort(abs(jack), decreasing=TRUE)[1:5]
+```
+- Hence,there is no outlier.
+
+
+
+```{r}
+#remove unusual observations
+clean_data = training_set[lev <= 2*p/n,]
+
+#refit the model
+g5 = lm(log(Price)~Month+House_age+log(Distance)+Stores+Latitude+Longitude+Stores:Month,data = clean_data,na.action = na.omit)
+summary(g5)
+#data1 = data1[which((data1$`No` != 271)&(data1$`No` != 114)&(data1$`No` != 313)&(data1$`No` != 221)),]
+par(mfrow = c(2,1))
+plot(g5,which = 1)
+plot(g5,which = 2)
+```
+
+-after removing the unusual points, the regression model performs better with higher Rsquare and more significant coefficients.(Not true,because the model is better before removing unsual observations)
+
+
+```{r}
+#detect variance
+plot(g5,which = 1)
+```
+
+- Almost a horizontal line.
+
+```{r}
+#accessing normality
+plot(g5,which = 2)
+```
+**Normal**
+
+
+```{r}
+#detect correlated errors
+library(lmtest)
+dwtest(g5)
+```
+
+- True autocorrelation is equal to 0.
+
+
+```{r}
+#box-cox transform
+library(MASS)
+boxcox(g5,plotit=T,lambda=seq(-1,5,by=0.1)) # zoom-in
+```
+-1 is included in the interval, so no transformation is needed.
+
+
+
+```{r}
+cor(clean_data[,-c(1,2,3,4)])
+```
+- There is high correlation between latitude,logitude and distance
+
+```{r}
+library(faraway)
+# Standardize matrix
+x = model.matrix(g5)[,c(13,14,15,16,17)]
+#Standardize Matrix Columns
+x = x - matrix(apply(x,2, mean), nrow(x),ncol(x), byrow=TRUE)
+x = x / matrix(apply(x, 2, sd), nrow(x),ncol(x), byrow=TRUE)
+apply(x,2,mean)
+apply(x,2,var)
+round(vif(x), dig=2)
+```
+
+-VIF values are not bigger than 10. Hence, we deem there is no collinearity.
+
+```{r}
+#model selection,AIC BIC R?
+extractAIC(g1)
+extractAIC(g2)
+extractAIC(g3)
+extractAIC(g4)
+extractAIC(g5)
+```
+-So the model g4 is best.
+
+
+```{r}
+#make predictions
+library(tidyverse)
+test_set = read_delim("Real_estate_valuation_data_set_test.csv")
+test_set = test_set[-4]
+colnames(test_set) <- c("No","Price","Date","Month","House_age","Distance","Stores","Latitude","Longitude")
+test_set$Month <- as.factor(test_set$Month)
+
+(RMSE = sqrt(sum((exp(predict(g4,test_set))-test_set$Price)^2)/nrow(test_set)))
+```
+
+
+
