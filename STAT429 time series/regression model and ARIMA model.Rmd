@@ -1,0 +1,181 @@
+---
+title: "code"
+author: "Rong Li"
+date: "11/26/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+```{r}
+library(tidyverse)
+pork = read_delim("D:/documents/UIUC/21fall/stat429/final project/pork price since 1991.csv",col_names = TRUE)
+chicken = read_delim("D:/documents/UIUC/21fall/stat429/final project/chicken price since 1991.csv",col_names = TRUE)
+fish = read_delim("D:/documents/UIUC/21fall/stat429/final project/fish price since 1991.csv",col_names = TRUE)
+ppi = read_delim("D:/documents/UIUC/21fall/stat429/final project/PPI data since 1991.csv",col_names = TRUE)
+cpi = read_delim("D:/documents/UIUC/21fall/stat429/final project/CPI data since 1991.csv",col_names = TRUE)
+```
+
+```{r}
+head(pork)#since 1991/10
+head(ppi)#since 1991/1
+head(cpi)#since 1991/1
+```
+```{r}
+ppi <- ppi %>% 
+  pivot_longer(cols = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"),names_to = "Month",values_to = "ppi")
+
+cpi <- cpi %>% 
+  pivot_longer(cols = c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"),names_to = "Month",values_to = "cpi")
+```
+
+
+```{r}
+ppi.data = ts(ppi$ppi[10:(nrow(ppi)-2)],frequency = 12,start = c(1991,10))
+cpi.data = ts(cpi$cpi[10:(nrow(cpi)-2)],frequency = 12,start = c(1991,10))
+pork.data = ts(pork$Price,frequency = 12, start = c(1991,10))
+chicken.data = ts(chicken$Price,frequency = 12, start = c(1991,10))
+fish.data = ts(fish$Price,frequency = 12, start = c(1991,10))
+```
+
+```{r}
+library(xts)
+library(astsa)
+par(mfrow=c(3,1))
+tsplot(pork.data)
+tsplot(ppi.data)
+tsplot(chicken.data)
+```
+```{r}
+par(mfrow= c(3,1))
+acf1(pork.data,max.lag = 100)#pork.data decay very slowly
+acf1(ppi.data,max.lag = 100)
+acf1(chicken.data,max.lag = 100)
+
+#variance
+var(chicken.data[1:(length(chicken.data)/2)])
+var(chicken.data[(length(chicken.data)/2):length(chicken.data)])
+
+
+#acf1(diff(ppi.data),max.lag = 100)
+library(zoo)
+trend = time(pork.data)
+#ppi_rate = diff(ppi.data)
+regression.data = as.zoo(ts.intersect(pork.data,chicken.data, fish.data, trend,trend2 = trend^2,ppi.data,cpi.data))
+
+g = lm(pork.data~trend+chicken.data + ppi.data,data = regression.data)
+summary(g)
+
+#summary(lm(pork.data~trend+ trend2 + fish.data + chicken.data+ ppi.data+ cpi.data,data = #regression.data))
+
+residual1 = pork.data - g$fitted.values
+par(mfrow = c(3,1))
+plot(residual1,main = "time series of residuals")
+acf1(residual1,max.lag = 100)# the residual is not a white noise,since the acf shows a strong correlation,with a period of 12
+#plot(diff(ppi.data))
+acf1(residual1,pacf = TRUE,max.lag = 100)
+hist(residual1)
+```
+```{r}
+#p=1,d=0,q=1,P=2,S=12
+#p=2,d=0,q=1,P=2,S=12 final
+
+# 这边可以用ARIMA model去拟合error吗？
+sarima(pork.data, p=2,d=0,q=1,P=2,S=12,xreg=cbind(trend, chicken.data, ppi.data))#
+
+
+#lag2.plot(ppi.data,pork.data,max.lag = 15)
+```
+
+- The residual plot shows that after refit the correlated errors, the residuals is stationary.
+- The ACF of residuals shows it is a white noise,since almost all spikes are within the blue line.
+- Q-Q plot shows we can not reject normality assumptions
+- Ljung-Box statistic shows most of the p-values are above the blue line, which means it is a white noise.
+
+
+
+##Part 2:
+
+
+
+```{r}
+par(mfrow=c(3,1))
+plot(log(fish.data))
+acf1(log(fish.data),max.lag = 50)#diff 后是12的周期！perfect！
+acf1(log(fish.data),pacf = TRUE,max.lag = 50)
+
+par(mfrow=c(3,1))
+plot(fish.data)
+acf1(fish.data,max.lag = 50)#diff 后是12的周期！perfect！
+acf1(fish.data,pacf = TRUE,max.lag = 50)
+
+#variance
+var(fish.data[1:(length(fish.data)/2)])
+var(fish.data[(length(fish.data)/2):length(fish.data)])
+```
+```{r}
+par(mfrow=c(3,1))
+plot(diff(log(fish.data)))
+acf1(diff(log(fish.data)),max.lag = 100)
+acf1(diff(log(fish.data)),pacf = TRUE,max.lag = 100)
+
+par(mfrow=c(2,1))
+plot(diff(log(fish.data)))
+plot(log(diff(fish.data)))
+
+par(mfrow=c(3,1))
+plot(diff(fish.data))
+acf1(diff(fish.data),max.lag = 100)
+acf1(diff(fish.data),pacf = TRUE,max.lag = 100)
+
+plot(diff(diff(fish.data)))
+```
+```{r}
+#suggest ARIMA(p=1,d=1,q=1,P=2,D=0,Q=0,S=12);ARIMA(p=1,d=1,q=1,P=3,D=0,Q=0,S=12)
+#这边试了很多模型LB 都没有大于蓝线怎么办？
+sarima(log(fish.data),1,1,0,1,0,0,S=12)
+
+sarima(log(fish.data),2,1,0,1,0,0,S=12)
+
+sarima(log(fish.data),1,1,1,1,0,0,S=12)
+
+sarima(log(fish.data),1,1,1,2,0,0,S=12)
+
+sarima(log(fish.data),2,1,1,1,0,0,S=12)
+
+sarima(log(fish.data),2,1,1,2,0,0,S=12)
+
+
+#sarima(log(fish.data),2,1,1,2,0,0,S=12)
+#
+#sarima(log(fish.data),2,1,1,1,0,1,S=12)
+#
+#sarima(log(fish.data),2,1,1,0,0,0,S=12)#good
+
+```
+
+```{r}
+#forecast
+for1 = sarima.for(log(fish.data), n.ahead = 5, p = 2, d = 1, q = 1, P=1,D=0, Q=0,S=12, plot.all=TRUE)
+```
+```{r}
+for (i in for1){
+  print(exp(i))
+}
+```
+
+
+
+```{r}
+#补充内容
+library(forecast)
+nsdiffs(log(fish.data))
+frequency(log(fish.data))
+ndiffs(log(fish.data))
+```
+
